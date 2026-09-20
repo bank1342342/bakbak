@@ -262,6 +262,9 @@ a.btn-ghost{display:inline-block;line-height:1.2}
 .pick-card-title{font-weight:600}
 .pick-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
 .pick-kind{font-size:13px;color:var(--muted);min-width:96px}
+.adm-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.adm-main{min-width:0;flex:1 1 220px}
+.adm-blocked{border-color:#7a2f3a;color:#ff9aa5}
 </style>
 </head>
 <body>
@@ -1341,15 +1344,15 @@ const gameOptions = () => _gameOpts || (_gameOpts = GAMES.map(g => g.t).sort((a,
 const findGame = title => GAMES.find(g => norm(g.t) === norm(title));
 
 /* ============ 렌더링 공통 ============ */
-const ROUTES = [["/", "예정된 일정"], ["/calendar", "캘린더"], ["/games", "게임 목록"], ["/mypage", "마이페이지", true]];   // 세 번째 값이 true면 로그인해야 보이는 메뉴
+const ROUTES = [["/", "예정된 일정"], ["/calendar", "캘린더"], ["/games", "게임 목록"], ["/mypage", "마이페이지", true], ["/admin", "관리자", "admin"]];   // 세 번째 값이 true면 로그인해야 보이는 메뉴
 const route = () => location.hash.replace(/^#/, "") || "/";
 const LOGO = `<img class="brand-badge" src="${SITE.badge}" alt=""><img class="brand-word" src="${SITE.word}" alt="${SITE.name}">`;
 const LOGO_BIG = `<div class="logo-big"><img class="brand-badge" src="${SITE.badge}" alt=""><img class="brand-word" src="${SITE.word}" alt="${SITE.name}"></div>`;
 
 function nav(cur) {
-  const links = ROUTES.filter(r => !r[2] || state.user);
+  const links = ROUTES.filter(r => r[2] === "admin" ? isAdmin() : (!r[2] || state.user));
   const right = state.user
-    ? `<span>${esc(state.user.name)}님 · 회원</span><button class="btn-ghost" data-act="logout">로그아웃</button>`
+    ? `<span>${esc(state.user.name)}님 · ${state.user.role === "admin" ? "관리자" : "회원"}</span><button class="btn-ghost" data-act="logout">로그아웃</button>`
     : `<a class="btn-ghost" href="#/login" data-act="need-login">로그인</a><a class="btn-ghost" href="#/register">가입하기</a>`;
   return `<header class="nav"><a class="brand" href="#/" aria-label="${SITE.name} 홈">${LOGO}</a>
   <nav class="nav-links">${links.map(([p, t]) => `<a href="#${p}" class="${cur === p ? "on" : ""}">${t}</a>`).join("")}</nav>
@@ -1392,6 +1395,7 @@ function sessCard(s) {
     ? `<div class="session-actions"><span class="badge mine-badge">내가 만든 일정</span><span class="btn-row"><button class="btn-sm" data-act="sched-edit" data-id="${s.id}">일정 수정</button><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제</button></span></div>`
     : ended ? "" : full ? `<button class="btn-primary done" disabled>정원 마감 · 선착순 ${ps.length}/${capOf(s)}명</button>`
     : `<button class="btn-primary ${on ? "done" : ""}" data-act="checkin" data-id="${s.id}">${on ? "체크인 취소" : "참석 체크인"}</button>`;
+  const adminAct = isAdmin() && !mine ? `<div class="session-actions"><span class="badge mine-badge">관리자</span><span class="btn-row"><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제</button></span></div>` : "";
   return `<div class="session-card ${ended ? "is-past" : ""}" data-sid="${s.id}">
     <div class="cover-wrap" style="--cover:url('${cover(s.game || DEFAULT_COVER)}')"><img class="session-cover" src="${cover(s.game || DEFAULT_COVER)}" alt="${esc(titleOf(s))} 표지"></div>
     <div class="session-card-head"><span class="session-count">${countText(s)}</span>${ended ? `<span class="badge">종료됨</span>` : ps.length >= capOf(s) ? `<span class="badge full-badge">마감</span>` : ""}</div>
@@ -1401,7 +1405,7 @@ function sessCard(s) {
       ${s.title && s.game ? `<div><dt>게임</dt><dd>${esc(s.game)}</dd></div>` : ""}<div><dt>인원·시간</dt><dd>${esc([needText(s), durLabel(s)].filter(Boolean).join(" · ") || "-")}</dd></div><div><dt>비용</dt><dd>${esc(costText(s))}</dd></div>
       <div><dt>주최자</dt><dd>${esc(s.host)}</dd></div>${s.note ? `<div><dt>메모</dt><dd>${esc(s.note)}</dd></div>` : ""}</dl>
     <div class="participants-block"><button type="button" class="participants-toggle" data-act="toggle-part" data-id="${s.id}"><span class="chevron ${open ? "open" : ""}">▸</span> 참여자 보기</button>${open ? partsHtml(s) : ""}</div>
-    ${act}</div>`;
+    ${act}${adminAct}</div>`;
 }
 // 예정된 일정에는 만나는 날이 지나면(다음 날부터) 더 이상 나오지 않는다. 만나는 날 당일에는 시간이 지나도 "종료됨"으로 남아 있다. 지난 일정은 캘린더에서 볼 수 있다.
 const isGone = s => isEnded(s) && new Date(s.start.getFullYear(), s.start.getMonth(), s.start.getDate() + 1) <= new Date();
@@ -1428,7 +1432,7 @@ function pageCalendar() {
     <div class="calendar-agenda-title-row"><span class="calendar-agenda-title">${esc(titleOf(s))}</span>${isEnded(s) ? `<span class="badge">종료됨</span>` : ""}${isMine(s) ? `<span class="badge mine-badge">내가 만든 일정</span>` : ""}</div>
     <p class="calendar-agenda-sub">${esc(s.place)} · ${countText(s)} · ${esc(s.host)}${s.title && s.game ? " · " + esc(s.game) : ""}${s.note ? " · " + esc(s.note) : ""}</p>
     ${partsHtml(s)}
-    ${isMine(s) ? `<div class="agenda-actions btn-row"><button class="btn-sm" data-act="sched-edit" data-id="${s.id}">일정 수정</button><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제</button></div>` : ""}</div></div>`).join("") : `<p class="empty">이 날짜에는 일정이 없습니다.</p>`;
+    ${isMine(s) ? `<div class="agenda-actions btn-row"><button class="btn-sm" data-act="sched-edit" data-id="${s.id}">일정 수정</button><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제</button></div>` : isAdmin() ? `<div class="agenda-actions btn-row"><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제 (관리자)</button></div>` : ""}</div></div>`).join("") : `<p class="empty">이 날짜에는 일정이 없습니다.</p>`;
   return shell("/calendar", `<div class="section-head"><h2>캘린더</h2></div>
   <div class="calendar-card"><div class="calendar-toolbar"><button type="button" class="calendar-nav-btn" data-act="cal-prev" aria-label="이전 달">‹</button>
   <div class="calendar-toolbar-center"><span class="calendar-month-label">${m.getFullYear()}년 ${m.getMonth() + 1}월</span><button type="button" class="calendar-today-btn" data-act="cal-today">오늘</button></div>
@@ -1501,7 +1505,7 @@ function reviewBlock(g) {
        <textarea name="text" rows="2" maxlength="300" data-draft="${g.i}" placeholder="이 게임은 어땠나요? (선택)">${esc(dr.text)}</textarea>
        <div class="rv-actions"><button class="btn-sm" type="submit">${mine ? "리뷰 수정" : "리뷰 등록"}</button>${mine ? `<button class="btn-sm danger" type="button" data-act="rv-del" data-i="${g.i}">내 리뷰 삭제</button>` : ""}</div></form>`
     : `<p class="review-login">리뷰를 남기려면 <a href="#/login" data-act="need-login">로그인</a>이 필요해요.</p>`;
-  const list = rs.map(x => `<div class="review-item"><div class="review-head"><b>${esc(x.name)}</b> <span class="s">${"★".repeat(x.stars)}${"☆".repeat(5 - x.stars)}</span> <span class="history-sub">${fmtDate(x.t)}</span></div>${x.text ? `<p>${esc(x.text)}</p>` : ""}</div>`).join("");
+  const list = rs.map(x => `<div class="review-item"><div class="review-head"><b>${esc(x.name)}</b> <span class="s">${"★".repeat(x.stars)}${"☆".repeat(5 - x.stars)}</span> <span class="history-sub">${fmtDate(x.t)}</span>${isAdmin() && x.uid !== myId() ? ` <button type="button" class="btn-sm danger" data-act="admin-rv-del" data-game="${esc(g.t)}" data-uid="${x.uid}">삭제</button>` : ""}</div>${x.text ? `<p>${esc(x.text)}</p>` : ""}</div>`).join("");
   const sample = Array.from({ length: nSample }, (_, i) => { const v = Math.max(1, Math.min(5, Math.round(base.r + ((i % 3) - 1) * 0.7))); return `<div class="review-row">익명${i + 1} · <span class="s">${"★".repeat(v)}</span>${"☆".repeat(5 - v)}</div>`; }).join("") + (nSample ? `<div class="review-row">(예시 데이터)</div>` : "");
   return form + list + sample + (!rs.length && !nSample ? `<div class="review-row">아직 리뷰가 없습니다.</div>` : "");
 }
@@ -1637,10 +1641,12 @@ function render() {
   if (REMOTE && ui.loading) { app.innerHTML = `<div class="app-shell">${nav(r)}<main class="app-main"><div class="wrap"><p class="empty">불러오는 중…</p></div></main></div>`; return; }
   if (REMOTE && ui.loadErr && !state.user && r === "/mypage") { app.innerHTML = shell("/", ""); return; }
   if (!state.user && r === "/mypage") { toast("로그인이 필요한 메뉴예요"); ui.next = "#" + r; location.hash = "#/login"; return; }   // 채팅·마이페이지는 로그인해야 볼 수 있다
-  const pages = { "/": pageHome, "/calendar": pageCalendar, "/games": pageGames, "/mypage": pageMy };
+  if (r === "/admin" && !isAdmin()) { location.hash = "#/"; return; }
+  const pages = { "/": pageHome, "/calendar": pageCalendar, "/games": pageGames, "/mypage": pageMy, "/admin": pageAdmin };
   app.innerHTML = (pages[r] || pageHome)();
+  if (r === "/admin" && !ui.adm) loadAdmin();
 }
-window.addEventListener("hashchange", () => { window.scrollTo(0, 0); render(); });
+window.addEventListener("hashchange", () => { window.scrollTo(0, 0); if (route() === "/admin") ui.adm = null; render(); });
 
 function parseSched(d) {   // 일정 만들기/수정 폼 → { err } 또는 { fields, start }. 날짜·시간·장소만 있으면 만들 수 있고, 제목/게임/진행 시간/인원/참가비는 비워 둬도 된다.
   const gameRaw = (d.game || "").trim(), gm = gameRaw ? findGame(gameRaw) : null, game = gm ? gm.t : gameRaw;
@@ -1711,7 +1717,7 @@ const REMOTE_ACT = {   // 눌렀을 때 서버로 보내는 동작 (그 밖의 �
   retry: () => { refreshAll("first").then(() => { ui.loading = false; render(); }); },
   logout: () => guard(async () => {
     try { await api("api_logout", { p_token: token }); } catch (e) { }
-    setToken(null); ui.rv = {}; await refreshAll("silent"); location.hash = "#/"; render(); toast("로그아웃했어요");
+    setToken(null); ui.adm = null; ui.rv = {}; await refreshAll("silent"); location.hash = "#/"; render(); toast("로그아웃했어요");
   }),
   checkin: (el, id) => guard(async () => {
     if (!state.user) { requireLogin("로그인하면 체크인할 수 있어요"); return; }
@@ -1722,7 +1728,7 @@ const REMOTE_ACT = {   // 눌렀을 때 서버로 보내는 동작 (그 밖의 �
     await after(on ? "체크인을 취소했어요" : "체크인 완료!");
   }),
   "sched-del-yes": (el, id) => guard(async () => {
-    await api("api_delete_meetup", { p_token: token, p_id: id }); delete ui.openParts[id]; closeModal();
+    await api("api_delete_meetup", { p_token: token, p_id: id }); delete ui.openParts[id]; ui.adm = null; closeModal();
     await after("일정을 삭제했어요 · 캘린더에서도 지워졌어요");
   }),
   "rv-del": el => guard(async () => {
@@ -1779,6 +1785,71 @@ const REMOTE_FORM = {   // 폼을 보냈을 때 서버로 보내는 동작
     await api("api_edit_play", { p_token: token, p_id: f.dataset.id, p_role: (d.role || "").trim(), p_result: d.result, p_memo: (d.memo || "").trim() }); await after("저장했어요");
   }),
 };
+/* ============ 관리자 ============ */
+// 관리자 계정은 Supabase에서 SQL로 딱 한 명만 지정한다 (setup.sql 맨 아래 안내). 사이트에서는 만들 수 없다.
+// 모든 관리자 동작은 서버가 "관리자인지" 다시 검사하므로, 화면만 고쳐서는 남의 일정·계정을 지울 수 없다.
+function isAdmin() { return REMOTE && !!state.user && state.user.role === "admin"; }
+function admMembersHtml() {
+  const a = ui.adm, q = norm(ui.admQ || ""), ms = a.members.filter(x => !q || norm(x.name + " " + x.school).includes(q));
+  return ms.length ? ms.map(x => `<div class="adm-row"><div class="adm-main"><b>${esc(whoLabel(x))}</b>${x.role === "admin" ? ` <span class="badge mine-badge">관리자</span>` : ""}${x.blocked ? ` <span class="badge adm-blocked">접속 차단됨</span>` : ""}
+    <div class="history-sub">가입 ${fmtDate(x.createdAt)} · 만든 일정 ${x.hosted}개 · 참석 ${x.joined}번</div></div>
+    ${x.role === "admin" ? "" : `<div class="btn-row"><button class="btn-sm" data-act="adm-pw" data-id="${x.id}">비밀번호 초기화</button><button class="btn-sm" data-act="adm-block" data-id="${x.id}" data-on="${x.blocked ? 0 : 1}">${x.blocked ? "차단 해제" : "접속 차단"}</button><button class="btn-sm danger" data-act="adm-del-member" data-id="${x.id}">계정 삭제</button></div>`}</div>`).join("") : `<p class="empty">찾는 회원이 없습니다.</p>`;
+}
+function admMeetupsHtml(list) {
+  return list.length ? list.map(u => `<div class="adm-row"><div class="adm-main"><b>${esc(u.title || u.game || "제목 없는 일정")}</b>
+    <div class="history-sub">${fmtDateTime(new Date(u.start))} · ${esc(u.place)} · 주최 ${esc(whoLabel({ name: u.hostName, school: u.hostSchool }))} · 참여 ${u.count}명</div></div>
+    <div class="btn-row"><button class="btn-sm danger" data-act="adm-del-sched" data-id="${u.id}">일정 삭제</button></div></div>`).join("") : `<p class="empty">일정이 없습니다.</p>`;
+}
+function pageAdmin() {
+  if (!ui.adm) return shell("/admin", `<div><h2>관리자</h2><p class="empty">불러오는 중…</p></div>`);
+  const a = ui.adm, t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const up = a.meetups.filter(u => new Date(u.start) >= t0).sort((x, y) => new Date(x.start) - new Date(y.start)), past = a.meetups.filter(u => new Date(u.start) < t0);
+  return shell("/admin", `<div><h2>관리자</h2>
+  <p class="sec-hint">남이 만든 일정을 지우거나, 회원의 접속을 막고 계정을 지울 수 있어요. 계정을 지우면 그 회원이 만든 일정과 기록도 함께 사라져요.</p>
+  <div class="section-head tight" style="margin-bottom:14px"><h3>회원 (${a.members.length}명)</h3><input class="search-input" data-admq placeholder="이름·소속으로 찾기…" value="${esc(ui.admQ || "")}"></div>
+  <div id="admMembers">${admMembersHtml()}</div>
+  <div class="section-head tight" style="margin:28px 0 14px"><h3>예정된 일정 (${up.length})</h3></div>${admMeetupsHtml(up)}
+  ${collapsible("admPast", `지난 일정 (${past.length})`, admMeetupsHtml(past))}</div>`);
+}
+async function loadAdmin() {
+  if (ui.admBusy) return; ui.admBusy = true;
+  try { ui.adm = await api("api_admin_overview", { p_token: token }); }
+  catch (e) { toast(e.message); ui.adm = { members: [], meetups: [] }; }
+  ui.admBusy = false; if (route() === "/admin") render();
+}
+function openConfirm(title, text, act, id, label) {
+  ui.modalOpen = true;
+  $("#modal").innerHTML = `<div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-label="${esc(title)}"><h3>${esc(title)}</h3><p class="sec-hint" style="margin-top:4px">${text}</p>
+    <div class="modal-actions"><button class="btn-sm danger" data-act="${act}" data-id="${id}">${label || "삭제"}</button><button class="btn-sm" data-act="modal-close">취소</button></div></div></div>`;
+}
+function openAdmPw(id) {
+  const u = ui.adm && ui.adm.members.find(x => x.id === id); if (!u) return;
+  ui.modalOpen = true;
+  $("#modal").innerHTML = `<div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-label="비밀번호 초기화"><h3>비밀번호 초기화</h3>
+    <p class="sec-hint" style="margin-top:4px">${esc(whoLabel(u))}님의 새 비밀번호를 정해 주세요. 정한 뒤 그 회원에게 직접 알려 주세요. 지금 로그인해 있던 기기는 로그아웃돼요.</p>
+    <form class="form" data-form="adm-pw"><input type="hidden" name="id" value="${esc(id)}"><label>새 비밀번호<input name="pw" autocomplete="off"></label>
+    <div class="modal-actions"><button class="btn-sm" type="button" data-act="modal-close">취소</button><button class="btn-primary" type="submit">변경</button></div></form></div></div>`;
+  setTimeout(() => { const i = $("#modal input[name=pw]"); if (i) i.focus(); }, 0);
+}
+const afterAdm = async msg => { ui.adm = null; await refreshAll(); render(); if (msg) toast(msg); };
+Object.assign(REMOTE_ACT, {
+  "adm-pw": (el, id) => openAdmPw(id),
+  "adm-block": (el, id) => guard(async () => {
+    const on = el.dataset.on === "1"; await api("api_admin_set_blocked", { p_token: token, p_member: id, p_blocked: on }); await afterAdm(on ? "접속을 차단했어요" : "차단을 풀었어요");
+  }),
+  "adm-del-member": (el, id) => { const u = ui.adm && ui.adm.members.find(x => x.id === id); if (u) openConfirm("계정을 삭제할까요?", `${esc(whoLabel(u))}님의 계정을 삭제하면 그 회원이 만든 일정(${u.hosted}개)과 참석·리뷰·기록·인생픽이 모두 사라지고, 되돌릴 수 없어요.`, "adm-del-member-yes", id, "계정 삭제"); },
+  "adm-del-member-yes": (el, id) => guard(async () => { await api("api_admin_delete_member", { p_token: token, p_member: id }); closeModal(); await afterAdm("계정을 삭제했어요"); }),
+  "adm-del-sched": (el, id) => { const u = ui.adm && ui.adm.meetups.find(x => x.id === id); if (u) openConfirm("일정을 삭제할까요?", `${esc(u.title || u.game || "제목 없는 일정")} · ${fmtDateTime(new Date(u.start))}<br>삭제하면 참석자 기록도 함께 지워져요.`, "adm-del-sched-yes", id); },
+  "adm-del-sched-yes": (el, id) => guard(async () => { await api("api_delete_meetup", { p_token: token, p_id: id }); closeModal(); await afterAdm("일정을 삭제했어요"); }),
+  "admin-rv-del": el => guard(async () => { await api("api_admin_delete_review", { p_token: token, p_game: el.dataset.game, p_member: el.dataset.uid }); await after("리뷰를 삭제했어요"); }),
+});
+Object.assign(REMOTE_FORM, {
+  "adm-pw": (f, d) => guard(async () => {
+    if (!(d.pw || "").trim()) { toast("새 비밀번호를 입력해 주세요"); return; }
+    await api("api_admin_reset_password", { p_token: token, p_member: d.id, p_new: d.pw }); closeModal(); toast("비밀번호를 바꿨어요. 그 회원에게 알려 주세요", 3500);
+  }),
+});
+
 function startRemote() {
   refreshAll("first").then(() => { ui.loading = false; render(); });
   setInterval(() => {   // 다른 사람이 바꾼 일정·참석 현황을 몇 초마다 가져온다 (입력 중이거나 창이 열려 있으면 건너뜀)
@@ -1812,7 +1883,7 @@ document.addEventListener("click", e => {
       return;
     }
     case "sched-edit": { const s = findS(id); if (!s || !isMine(s)) { toast("내가 만든 일정만 수정할 수 있어요"); return; } openSchedModal(null, s); return; }
-    case "sched-del": { const s = findS(id); if (!s || !isMine(s)) { toast("내가 만든 일정만 삭제할 수 있어요"); return; } openDelModal(s); return; }
+    case "sched-del": { const s = findS(id); if (!s || !(isMine(s) || isAdmin())) { toast("내가 만든 일정만 삭제할 수 있어요"); return; } openDelModal(s); return; }
     case "sched-del-yes": deleteSession(id); return;
     case "rv-star": { const dr = ui.rv[el.dataset.i] = ui.rv[el.dataset.i] || { stars: 0, text: "" }; dr.stars = +el.dataset.n; break; }
     case "rv-del": {
@@ -2042,6 +2113,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && (ui.coverF
 document.addEventListener("input", e => {
   const dr = e.target.closest("[data-draft]");   // 리뷰 글은 별점을 눌러 화면이 다시 그려져도 남아 있게 한다
   if (dr) { const i = dr.dataset.draft; (ui.rv[i] = ui.rv[i] || { stars: 0, text: "" }).text = dr.value; return; }
+  if (e.target.dataset && e.target.dataset.admq !== undefined) { ui.admQ = e.target.value; const box = $("#admMembers"); if (box && ui.adm) box.innerHTML = admMembersHtml(); return; }
   const el = e.target.closest("[data-filter]"); if (!el) return;
   const k = el.dataset.filter;
   if (k === "q") { ui.g.q = el.value; ui.g.limit = PAGE; refreshGames(); }
