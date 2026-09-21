@@ -1377,7 +1377,7 @@ function pageLogin() {
   <label>비밀번호<input name="pw" type="password"></label><button class="btn-primary" type="submit">로그인</button></form>
   <p class="form-footnote">계정이 없나요? <a href="#/register">가입하기</a></p>
   <a class="login-back" href="#/">로그인 없이 둘러보기</a>
-  <p class="demo-note">${REMOTE ? "※ 비밀번호는 서버에 암호화되어 저장돼요. 잊어버리면 관리자에게 문의해 주세요." : "※ 데모입니다. 계정 정보는 이 브라우저에만 저장되고 서버로 전송되지 않아요."}</p></div></main></div>`;
+  ${REMOTE ? "" : `<p class="demo-note">※ 데모입니다. 계정 정보는 이 브라우저에만 저장되고 서버로 전송되지 않아요.</p>`}</div></main></div>`;
 }
 function pageRegister() {
   return `<div class="app-shell"><main class="app-main"><div class="card center-card">${LOGO_BIG}<h2>가입하기</h2>
