@@ -81,6 +81,14 @@ h3{font-size:17px;font-weight:700;margin:0 0 12px}
 .session-meta>div{display:grid;grid-template-columns:68px 1fr;gap:4px;padding:2.5px 0;font-size:13.5px}
 .session-meta dt{color:var(--label)}
 .session-meta dd{margin:0}
+.chat-link{display:inline-block;background:#fee500;color:#191600;font-weight:700;font-size:12.5px;padding:3px 11px;border-radius:999px;text-decoration:none}
+.chat-link:hover{filter:brightness(1.08)}
+.chat-hint{color:var(--muted);font-size:12.5px}
+.img-lab{display:block;color:var(--label);font-size:13px;margin:0 0 6px}
+.img-row{display:flex;gap:12px;align-items:center}
+.img-box{width:128px;height:96px;flex:none;border:1px dashed var(--line);border-radius:8px;background:#0e1012;color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;padding:0;overflow:hidden}
+.img-box img{width:100%;height:100%;object-fit:cover;display:block}
+.img-side{min-width:0}
 .participants-block{padding:8px 18px 4px}
 .participants-toggle{background:none;border:0;padding:4px 0;color:var(--muted);font-size:13px;display:inline-flex;align-items:center;gap:6px}
 .chevron{font-size:9px;display:inline-block;transition:transform .15s}
@@ -1306,6 +1314,7 @@ const myId = () => state.user ? state.user.id : null;
 const isMine = s => !!(s.custom && state.user && s.hostId === state.user.id);   // 내가 만든 일정만 지울 수 있다
 const shortSchool = sc => String(sc || "").trim().replace(/대학교$/, "대");   // 동서대학교 → 동서대
 const mySchool = () => (state.accounts[myId()] || {}).school || (state.user && state.user.school) || "";
+const baseName = n => { const s = String(n == null ? "" : n).trim().toLowerCase(); return s.replace(/\d+$/, "") || s; };   // 홍길동2 → 홍길동 (로그인할 때 숫자는 안 써도 된다)
 const whoLabel = x => { const sc = shortSchool(x.school != null && x.school !== "" ? x.school : (state.accounts[x.id] || {}).school); return sc ? `${sc} ${x.name}` : x.name; };   // "동서대 홍길동"
 function peopleInfo(s) {
   if (s.custom) {   // 주최자를 맨 앞에, 나머지는 참여 체크인을 누른 순서대로
@@ -1364,7 +1373,7 @@ const shell = (cur, inner) => `<div class="app-shell">${nav(cur)}<main class="ap
 /* ============ 페이지: 로그인 / 가입 ============ */
 function pageLogin() {
   return `<div class="app-shell"><main class="app-main"><div class="card center-card">${LOGO_BIG}<h2>로그인</h2>
-  <form class="form" data-form="login"><label>이름<input name="name" autocomplete="off" placeholder="가입한 이름 (숫자가 붙었다면 숫자까지)"></label>
+  <form class="form" data-form="login"><label>이름<input name="name" autocomplete="off" placeholder="가입한 이름"></label>
   <label>비밀번호<input name="pw" type="password"></label><button class="btn-primary" type="submit">로그인</button></form>
   <p class="form-footnote">계정이 없나요? <a href="#/register">가입하기</a></p>
   <a class="login-back" href="#/">로그인 없이 둘러보기</a>
@@ -1376,7 +1385,7 @@ function pageRegister() {
   <label>대학교<select name="univ" data-schooltype>${UNIVS.map(u => `<option value="${u}">${u}</option>`).join("")}<option value="__manual">직접 입력</option></select></label>
   <label id="schoolManual" hidden>대학교(소속) 직접 입력<input name="schoolText" autocomplete="off" placeholder="예) OO대학교, 직장인, 일반"></label>
   <label>이름<input name="name" autocomplete="off"></label>
-  <p class="field-hint">같은 소속에 같은 이름이 있으면 이름 뒤에 숫자(2, 3, …)가 자동으로 붙어요.</p>
+  <p class="field-hint">같은 소속에 같은 이름이 있으면 이름 뒤에 숫자(2, 3, …)가 자동으로 붙어요. 로그인할 땐 숫자 없이 이름만 써도 돼요.</p>
   <label>비밀번호<input name="pw" type="password" autocomplete="new-password"></label>
   <p class="field-hint">비밀번호는 평소에 안 쓰는 걸로 만들어 주세요.</p>
   <button class="btn-primary" type="submit">가입하기</button></form>
@@ -1389,6 +1398,43 @@ function pageRegister() {
 function partsHtml(s) {
   return `<div class="participant-pills">${peopleInfo(s).map(p => `<span class="participant-pill ${p.gm ? "is-gm" : ""} ${p.me ? "is-me" : ""}">${esc(p.name)}</span>`).join("")}</div>`;
 }
+/* ============ 카톡방 링크 ============ */
+// 일정을 만든 사람이 폼에 카톡방(오픈채팅 등) 링크를 적어 둔다. 링크는 만든 사람·관리자·참석 체크인한 사람에게만 보이고, 다른 사람에게는 "체크인하면 보여요" 안내만 나온다.
+const normChat = raw => { let u = (raw || "").trim(); if (u && !/^[a-z][a-z0-9+.-]*:/i.test(u) && /^[^\s\/]+\.[^\s\/]+/.test(u)) u = "https://" + u; return u; };
+const chatUrlOf = s => (REMOTE ? s.chatUrl : (isMine(s) || state.checkins[s.id]) ? s.chatUrl : "") || "";
+const hasChatOf = s => REMOTE ? !!(s.hasChat || s.chatUrl) : !!s.chatUrl;
+function chatHtml(s) {
+  const url = chatUrlOf(s);
+  if (url) return `<a class="chat-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${/kakao\.com/i.test(url) ? "카톡방 입장" : "채팅방 입장"} ↗</a>`;
+  if (hasChatOf(s)) return `<span class="chat-hint">${state.user ? "참석 체크인하면 카톡방 링크가 보여요" : "로그인하고 참석 체크인하면 카톡방 링크가 보여요"}</span>`;
+  return "";
+}
+/* ============ 일정 사진 ============ */
+// 일정을 만들 때 원하는 사진(배드민턴, 방탈출 등)을 올릴 수 있다. 안 올리면 고른 게임의 표지(게임도 안 골랐으면 기본 사진)가 나온다.
+// 서버에서는 사진이 무거워서 일정 목록과 따로 받아 오고(IMGS), 데모에서는 일정에 그대로 저장한다.
+const IMGS = {};
+const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const hasImgOf = s => REMOTE ? !!s.imgV : !!s.img;
+const imgOf = s => (REMOTE ? (s.imgV && IMGS[s.id] && IMGS[s.id].data) : s.img) || "";
+const coverOf = s => imgOf(s) || (hasImgOf(s) ? BLANK : cover(s.game || DEFAULT_COVER));
+let imgBusy = false;
+function paintImgs() {   // 새로 받은 사진을 화면에 바로 반영 (전체를 다시 그리지 않는다)
+  document.querySelectorAll(".session-card[data-sid]").forEach(el => {
+    const s = findS(el.dataset.sid); if (!s) return; const m = imgOf(s); if (!m) return;
+    const im = el.querySelector(".session-cover"); if (im && im.getAttribute("src") !== m) { im.src = m; el.querySelector(".cover-wrap").style.setProperty("--cover", `url('${m}')`); }
+  });
+}
+async function loadImgs() {
+  if (!REMOTE || imgBusy) return;
+  const live = new Set(state.sessions.map(s => s.id)); Object.keys(IMGS).forEach(k => { if (!live.has(k)) delete IMGS[k]; });
+  const cut = Date.now() - 2 * 864e5;   // 지난 지 오래된 일정 사진은 받지 않는다
+  const want = state.sessions.filter(s => s.imgV && new Date(s.start).getTime() > cut && (!IMGS[s.id] || IMGS[s.id].v !== s.imgV)).map(s => s.id);
+  if (!want.length) return;
+  imgBusy = true;
+  try { (await api("api_get_meetup_images", { p_ids: want.slice(0, 30) })).forEach(r => { IMGS[r.id] = { v: r.v, data: r.data }; }); paintImgs(); } catch (e) { }
+  finally { imgBusy = false; }
+  if (want.length > 30) loadImgs();
+}
 function sessCard(s) {
   const ps = people(s), on = !!state.checkins[s.id], open = !!ui.openParts[s.id], mine = isMine(s), ended = isEnded(s), full = !on && !mine && ps.length >= capOf(s);
   const act = mine
@@ -1397,13 +1443,13 @@ function sessCard(s) {
     : `<button class="btn-primary ${on ? "done" : ""}" data-act="checkin" data-id="${s.id}">${on ? "체크인 취소" : "참석 체크인"}</button>`;
   const adminAct = isAdmin() && !mine ? `<div class="session-actions"><span class="badge mine-badge">관리자</span><span class="btn-row"><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제</button></span></div>` : "";
   return `<div class="session-card ${ended ? "is-past" : ""}" data-sid="${s.id}">
-    <div class="cover-wrap" style="--cover:url('${cover(s.game || DEFAULT_COVER)}')"><img class="session-cover" src="${cover(s.game || DEFAULT_COVER)}" alt="${esc(titleOf(s))} 표지"></div>
+    <div class="cover-wrap" style="--cover:url('${coverOf(s)}')"><img class="session-cover" src="${coverOf(s)}" alt="${esc(titleOf(s))} 표지"></div>
     <div class="session-card-head"><span class="session-count">${countText(s)}</span>${ended ? `<span class="badge">종료됨</span>` : ps.length >= capOf(s) ? `<span class="badge full-badge">마감</span>` : ""}</div>
     <h3>${esc(titleOf(s))}</h3>
     <dl class="session-meta">
       <div><dt>일시</dt><dd>${fmtDateTime(s.start)}</dd></div><div><dt>장소</dt><dd>${esc(s.place)}</dd></div>
       ${s.title && s.game ? `<div><dt>게임</dt><dd>${esc(s.game)}</dd></div>` : ""}<div><dt>인원·시간</dt><dd>${esc([needText(s), durLabel(s)].filter(Boolean).join(" · ") || "-")}</dd></div><div><dt>비용</dt><dd>${esc(costText(s))}</dd></div>
-      <div><dt>주최자</dt><dd>${esc(s.host)}</dd></div>${s.note ? `<div><dt>메모</dt><dd>${esc(s.note)}</dd></div>` : ""}</dl>
+      <div><dt>주최자</dt><dd>${esc(s.host)}</dd></div>${hasChatOf(s) ? `<div><dt>카톡방</dt><dd>${chatHtml(s)}</dd></div>` : ""}${s.note ? `<div><dt>메모</dt><dd>${esc(s.note)}</dd></div>` : ""}</dl>
     <div class="participants-block"><button type="button" class="participants-toggle" data-act="toggle-part" data-id="${s.id}"><span class="chevron ${open ? "open" : ""}">▸</span> 참여자 보기</button>${open ? partsHtml(s) : ""}</div>
     ${act}${adminAct}</div>`;
 }
@@ -1431,6 +1477,7 @@ function pageCalendar() {
   const agenda = sel.length ? sel.map(s => `<div class="calendar-agenda-item"><div class="calendar-agenda-time">${fmtTime(s.start)}</div><div class="calendar-agenda-body">
     <div class="calendar-agenda-title-row"><span class="calendar-agenda-title">${esc(titleOf(s))}</span>${isEnded(s) ? `<span class="badge">종료됨</span>` : ""}${isMine(s) ? `<span class="badge mine-badge">내가 만든 일정</span>` : ""}</div>
     <p class="calendar-agenda-sub">${esc(s.place)} · ${countText(s)} · ${esc(s.host)}${s.title && s.game ? " · " + esc(s.game) : ""}${s.note ? " · " + esc(s.note) : ""}</p>
+    ${hasChatOf(s) ? `<p class="calendar-agenda-sub">카톡방 · ${chatHtml(s)}</p>` : ""}
     ${partsHtml(s)}
     ${isMine(s) ? `<div class="agenda-actions btn-row"><button class="btn-sm" data-act="sched-edit" data-id="${s.id}">일정 수정</button><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제</button></div>` : isAdmin() ? `<div class="agenda-actions btn-row"><button class="btn-sm danger" data-act="sched-del" data-id="${s.id}">일정 삭제 (관리자)</button></div>` : ""}</div></div>`).join("") : `<p class="empty">이 날짜에는 일정이 없습니다.</p>`;
   return shell("/calendar", `<div class="section-head"><h2>캘린더</h2></div>
@@ -1659,8 +1706,10 @@ function parseSched(d) {   // 일정 만들기/수정 폼 → { err } 또는 { f
   if (dt < t0 && !(orig && ymd(new Date(orig.start)) === ymd(dt))) { return { err: "지난 날짜로는 일정을 만들 수 없어요" }; }   // 이미 지난 날짜였던 일정의 다른 내용(메모 등)만 고치는 건 허용
   if (!tm) { return { err: "시작 시간을 확인해 주세요 (예: 19:00, 오후 7시 30분)" }; }
   if (!place) { return { err: "장소를 입력해 주세요" }; }
+  const chatUrl = normChat(d.chat);
+  if (chatUrl && (!/^https?:\/\/[^\s]+$/i.test(chatUrl) || chatUrl.length > 300)) { return { err: "카톡방 링크는 http:// 또는 https:// 로 시작하는 주소여야 해요 (예: https://open.kakao.com/o/abcd1234)" }; }
   const start = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), tm[0], tm[1]);
-  const fields = { title, game, start: start.toISOString(), min, durText, place, need, cost: cost || "무료", note: (d.note || "").trim() };
+  const fields = { title, game, start: start.toISOString(), min, durText, place, need, cost: cost || "무료", note: (d.note || "").trim(), chatUrl };
   return { fields, start };
 }
 
@@ -1688,7 +1737,7 @@ function hydrate(d) {   // 서버에서 받은 데이터를 화면이 쓰는 모
   if (token && !d.me) { setToken(null); if (d.blocked) toast("이용이 제한된 계정이에요. 관리자에게 문의해 주세요", 4000); }
   state.user = d.me || null;
   const me = state.user && state.user.id;
-  state.sessions = d.meetups.map(u => ({ id: u.id, title: u.title, game: u.game, start: u.start, min: u.min, durText: u.durText, place: u.place, need: u.need, cost: u.cost, note: u.note, host: whoLabel({ name: u.hostName, school: u.hostSchool }), hostId: u.hostId }));
+  state.sessions = d.meetups.map(u => ({ id: u.id, title: u.title, game: u.game, start: u.start, min: u.min, durText: u.durText, place: u.place, need: u.need, cost: u.cost, note: u.note, host: whoLabel({ name: u.hostName, school: u.hostSchool }), hostId: u.hostId, chatUrl: u.chatUrl || "", hasChat: !!u.hasChat, imgV: u.imgV || null }));
   state.roster = {}; state.checkins = {};
   d.meetups.forEach(u => { state.roster[u.id] = u.roster; if (me && u.roster.some(r => r.id === me)) state.checkins[u.id] = true; });
   state.reviews = {};
@@ -1696,6 +1745,7 @@ function hydrate(d) {   // 서버에서 받은 데이터를 화면이 쓰는 모
   state.plays = d.plays || [];
   state.pickCounts = Object.fromEntries((d.picks || []).map(x => [x.game, x.n])); state.myPicks = d.myPicks || [];
   sessCache = null;
+  loadImgs();
 }
 async function refreshAll(mode) {   // mode: "first"(처음 불러오기) | "silent"(조용히) | 그 외(오류를 알림). 바뀐 게 있으면 true
   try {
@@ -1725,7 +1775,8 @@ const REMOTE_ACT = {   // 눌렀을 때 서버로 보내는 동작 (그 밖의 �
     const on = !!state.checkins[id];
     try { await api(on ? "api_leave" : "api_join", { p_token: token, p_id: id }); }
     catch (e) { await refreshAll("silent"); render(); throw e; }   // 정원이 찼으면 서버가 거절 → 최신 상태로 다시 그린다
-    await after(on ? "체크인을 취소했어요" : "체크인 완료!");
+    if (on) { await after("체크인을 취소했어요"); return; }
+    await refreshAll("silent"); const s2 = findS(id); render(); toast(s2 && s2.chatUrl ? "체크인 완료! 카톡방 링크가 열렸어요" : "체크인 완료!");
   }),
   "sched-del-yes": (el, id) => guard(async () => {
     await api("api_delete_meetup", { p_token: token, p_id: id }); delete ui.openParts[id]; ui.adm = null; closeModal();
@@ -1756,7 +1807,7 @@ const REMOTE_FORM = {   // 폼을 보냈을 때 서버로 보내는 동작
     if (!pw) { toast("비밀번호를 만들어 주세요"); return; }
     const r = await api("api_register", { p_school: school, p_name: raw, p_pw: pw }); setToken(r.token); await refreshAll("silent");
     const n = ui.next || "#/"; ui.next = null; location.hash = n; render();
-    toast(r.renamed ? `가입 완료! 같은 이름이 있어서 "${r.user.name}"(으)로 만들어졌어요. 로그인할 때 이 이름을 써 주세요` : "가입 완료! 환영해요", r.renamed ? 5500 : 1800);
+    toast(r.renamed ? `가입 완료! 같은 이름이 있어서 "${r.user.name}"(으)로 만들어졌어요. 로그인할 땐 "${raw}"만 써도 되고 "${r.user.name}"을 써도 돼요` : "가입 완료! 환영해요", r.renamed ? 5500 : 1800);
   }),
   pw: (f, d) => guard(async () => {
     if (!d.b) { toast("새 비밀번호를 입력해 주세요"); return; }
@@ -1764,8 +1815,9 @@ const REMOTE_FORM = {   // 폼을 보냈을 때 서버로 보내는 동작
   }),
   "sched-add": (f, d) => guard(async () => {
     if (!state.user) { closeModal(); requireLogin(); return; }
+    if (ui.schedImgBusy) { toast("사진을 불러오는 중이에요. 잠시만 기다려 주세요"); return; }
     const P = parseSched(d); if (P.err) { toast(P.err); return; }
-    const F = P.fields, args = { p_token: token, p_title: F.title, p_game: F.game, p_start: F.start, p_min: F.min, p_dur_text: F.durText, p_place: F.place, p_need: F.need, p_cost: F.cost, p_note: F.note };
+    const F = P.fields, args = { p_token: token, p_title: F.title, p_game: F.game, p_start: F.start, p_min: F.min, p_dur_text: F.durText, p_place: F.place, p_need: F.need, p_cost: F.cost, p_note: F.note, p_chat_url: F.chatUrl, p_img: ui.schedImg === undefined ? null : ui.schedImg };
     if (d.sid) await api("api_update_meetup", { ...args, p_id: d.sid }); else await api("api_create_meetup", args);
     ui.calSel = new Date(P.start); ui.calMonth = new Date(P.start.getFullYear(), P.start.getMonth(), 1); closeModal();
     await after(d.sid ? "일정을 수정했어요 · 캘린더에도 반영돼요" : "일정을 만들었어요 · 캘린더에도 표시돼요");
@@ -1894,6 +1946,8 @@ document.addEventListener("click", e => {
     case "pick-file": $("#filePick").click(); return;
     case "cover-reset": { const t = ui.coverFor; delete CUSTOM[t]; idb.del(t).catch(() => { }); closeModal(); toast("원래 사진으로 되돌렸어요"); render(); return; }
     case "modal-close": closeModal(); return;
+    case "sched-img-pick": { const f = $("#schedImgPick"); if (f) f.click(); return; }
+    case "sched-img-clear": ui.schedImg = ""; paintSchedImg(); return;
     case "toggle-part": ui.openParts[id] = !ui.openParts[id]; break;
     case "checkin": {
       if (!state.user) { requireLogin("로그인하면 체크인할 수 있어요"); return; }
@@ -1907,7 +1961,7 @@ document.addEventListener("click", e => {
         if (n >= capOf(s)) { toast("정원이 가득 찼어요. 선착순 마감이에요"); return; }
         state.checkins[id] = true; if (s.custom) (state.roster[id] = state.roster[id] || []).push({ id: myId(), name: myName(), school: mySchool() });
         if (s.game) state.plays.push({ id: "ci-" + id, sessionId: id, game: s.game, date: ymd(s.start), place: s.place, manual: false, role: "", result: "", memo: "", rating: null });
-        toast("체크인 완료!");
+        toast(s.chatUrl ? "체크인 완료! 카톡방 링크가 열렸어요" : "체크인 완료!");
       }
       save(); break;
     }
@@ -1947,8 +2001,10 @@ document.addEventListener("submit", e => {
     const nm = (d.name || "").trim().toLowerCase(), pw = d.pw || "";
     if (!nm) { toast("이름을 입력해 주세요"); return; }
     if (!pw) { toast("비밀번호를 입력해 주세요"); return; }
-    const cands = Object.entries(state.accounts).filter(([, a]) => String(a.name).toLowerCase() === nm), ph = hashPw(pw);
-    const hit = cands.find(([, a]) => !a.pwh || a.pwh === ph);   // 비밀번호가 없던 예전 계정은 처음 입력한 비밀번호가 그 계정의 비밀번호가 된다
+    // "홍길동"이라고 쓰면 홍길동·홍길동2·홍길동3… 중 비밀번호가 맞는 계정으로, "홍길동2"라고 쓰면 그 이름으로 로그인된다 (이름이 똑같은 계정을 먼저 찾는다)
+    const isExact = a => String(a.name).toLowerCase() === nm;
+    const cands = Object.entries(state.accounts).filter(([, a]) => isExact(a) || baseName(a.name) === nm).sort((x, y) => isExact(y[1]) - isExact(x[1])), ph = hashPw(pw);
+    const hit = cands.find(([, a]) => a.pwh ? a.pwh === ph : isExact(a));   // 비밀번호가 없던 예전 계정은 처음 입력한 비밀번호가 그 계정의 비밀번호가 된다
     if (!hit) { toast(cands.length ? "비밀번호가 맞지 않아요" : "가입된 이름이 없어요. 가입하기를 눌러 주세요"); return; }
     const [id, acc] = hit; if (!acc.pwh) { acc.pwh = ph; delete acc.legacy; }
     state.user = { id, name: acc.name, school: acc.school || "" }; afterLogin();
@@ -1963,24 +2019,26 @@ document.addEventListener("submit", e => {
     const taken = new Set(Object.values(state.accounts).filter(a => (a.school || "") === school).map(a => a.name));
     let name = raw, n = 1; while (taken.has(name)) { n++; name = raw + n; }
     const ph = hashPw(pw);
-    if (Object.values(state.accounts).some(a => a.name === name && a.pwh === ph)) { toast("같은 이름이 이미 쓰는 비밀번호예요. 다른 비밀번호로 만들어 주세요"); return; }
+    if (Object.values(state.accounts).some(a => baseName(a.name) === baseName(raw) && a.pwh === ph)) { toast("같은 이름을 쓰는 사람이 이미 쓰는 비밀번호예요. 다른 비밀번호로 만들어 주세요"); return; }
     const id = "m-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     state.accounts[id] = { name, school, pwh: ph }; state.user = { id, name, school };
     afterLogin();
-    toast(name !== raw ? `가입 완료! 같은 이름이 있어서 "${name}"(으)로 만들어졌어요. 로그인할 때 이 이름을 써 주세요` : "가입 완료! 환영해요", name !== raw ? 5500 : 1800);
+    toast(name !== raw ? `가입 완료! 같은 이름이 있어서 "${name}"(으)로 만들어졌어요. 로그인할 땐 "${raw}"만 써도 되고 "${name}"을 써도 돼요` : "가입 완료! 환영해요", name !== raw ? 5500 : 1800);
   }
   else if (k === "pw") {
     const acc = state.accounts[myId()]; if (!acc) { toast("계정 정보를 찾을 수 없어요"); return; }
     if (!d.b) { toast("새 비밀번호를 입력해 주세요"); return; }
     if (acc.pwh && acc.pwh !== hashPw(d.a || "")) { toast("현재 비밀번호가 맞지 않아요"); return; }
     const nh = hashPw(d.b);
-    if (Object.values(state.accounts).some(x => x !== acc && x.name === acc.name && x.pwh === nh)) { toast("같은 이름이 이미 쓰는 비밀번호예요. 다른 비밀번호로 바꿔 주세요"); return; }
+    if (Object.values(state.accounts).some(x => x !== acc && baseName(x.name) === baseName(acc.name) && x.pwh === nh)) { toast("같은 이름을 쓰는 사람이 이미 쓰는 비밀번호예요. 다른 비밀번호로 바꿔 주세요"); return; }
     acc.pwh = nh; delete acc.legacy; ui.pwOpen = false; save(); toast("비밀번호를 변경했어요"); render();
   }
   else if (k === "sched-add") {
     if (!state.user) { closeModal(); requireLogin(); return; }
+    if (ui.schedImgBusy) { toast("사진을 불러오는 중이에요. 잠시만 기다려 주세요"); return; }
     const P = parseSched(d); if (P.err) { toast(P.err); return; }
     const fields = P.fields, start = P.start;
+    if (ui.schedImg !== undefined) fields.img = ui.schedImg;   // 안 건드렸으면(undefined) 그대로, ""이면 지우기
     let msg;
     if (d.sid) {   // 수정
       const s = state.sessions.find(x => x.id === d.sid);
@@ -2039,15 +2097,16 @@ function openCoverModal(title) {
   });
 }
 function closeModal() {
-  ui.coverFor = null; ui.modalOpen = false; $("#modal").innerHTML = "";
+  ui.coverFor = null; ui.modalOpen = false; ui.schedImg = undefined; ui.schedImgBusy = false; $("#modal").innerHTML = "";
 }
 const PLACES = ["서면 레드버튼", "내일도럭키"];   // 일정 만들기에서 고를 수 있는 장소 (마지막에 "직접 입력"이 따로 붙는다)
 function openSchedModal(dateStr, s) {   // s가 있으면 수정, 없으면 새 일정
   ui.modalOpen = true;
   const now = new Date(), def = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 14); if (now >= def) def.setDate(def.getDate() + 1);   // 새 일정 기본값: 오후 2시 (오늘 2시가 지났으면 내일)
-  const v = s ? { title: s.title || "", game: s.game || "", date: ymd(s.start), time: timeKo(s.start), min: durLabel(s), place: s.place, need: needText(s), cost: costText(s), note: s.note || "" }
-    : { title: "", game: "", date: dateStr || ymd(def), time: "오후 2시", min: "2시간", place: PLACES[0], need: "4명", cost: "무료", note: "" };
+  const v = s ? { title: s.title || "", game: s.game || "", date: ymd(s.start), time: timeKo(s.start), min: durLabel(s), place: s.place, need: needText(s), cost: costText(s), note: s.note || "", chat: s.chatUrl || "" }
+    : { title: "", game: "", date: dateStr || ymd(def), time: "오후 2시", min: "2시간", place: PLACES[0], need: "4명", cost: "무료", note: "", chat: "" };
   const man = !PLACES.includes(v.place), ttl = s ? "일정 수정" : "일정 만들기";
+  ui.schedImg = undefined; ui.schedImgBusy = false; ui.schedImgCur = s ? (imgOf(s) || (hasImgOf(s) ? BLANK : "")) : "";
   $("#modal").innerHTML = `<div class="modal-bg" id="modalBg"><div class="modal form-modal" role="dialog" aria-label="${ttl}"><h3>${ttl}</h3>
    <form class="form" data-form="sched-add">${s ? `<input type="hidden" name="sid" value="${esc(s.id)}">` : ""}
     <label>제목<input name="title" autocomplete="off" maxlength="60" placeholder="예) 금요일 파티보드게임" value="${esc(v.title)}"></label>
@@ -2058,9 +2117,33 @@ function openSchedModal(dateStr, s) {   // s가 있으면 수정, 없으면 새 
     <label id="placeManual" ${man ? "" : "hidden"}>장소 직접 입력<input name="place" placeholder="장소를 입력하세요" value="${man ? esc(v.place) : ""}"></label>
     <div class="row2"><label>필요 인원<input name="need" type="text" autocomplete="off" placeholder="예) 4명 · 4~6명 · 상관없음" value="${esc(v.need)}"></label><label>참가비<input name="cost" type="text" autocomplete="off" placeholder="예) 무료 · 5,000원 · 음료 1잔" value="${esc(v.cost)}"></label></div>
     <label>메모 (선택)<textarea name="note" rows="2" maxlength="120">${esc(v.note)}</textarea></label>
+    <div><span class="img-lab">사진 (선택)</span><div class="img-row"><button type="button" class="img-box" id="schedImgBox" data-act="sched-img-pick" aria-label="사진 고르기"></button>
+      <div class="img-side"><div class="btn-row"><button type="button" class="btn-sm" data-act="sched-img-pick">사진 고르기</button><button type="button" class="btn-sm" id="schedImgClear" data-act="sched-img-clear">사진 지우기</button></div><p class="sec-hint" id="schedImgNote" style="margin:6px 0 0"></p></div></div>
+      <input type="file" id="schedImgPick" accept="image/*" hidden></div>
+    <label>카톡방 링크 (선택)<input name="chat" type="text" inputmode="url" autocomplete="off" maxlength="300" placeholder="예) https://open.kakao.com/o/abcd1234" value="${esc(v.chat)}"></label>
+    <p class="sec-hint" style="margin:-8px 0 0">링크는 나와 관리자, 참석 체크인한 사람에게만 보여요. 나중에 일정 수정에서 바꾸거나 지울 수 있어요.</p>
     <p class="sec-hint" style="margin:0">날짜·시작 시간·장소만 있으면 만들 수 있어요. 나머지는 자유롭게 적거나 비워 둬도 돼요. 만든 일정은 캘린더에도 표시되고, 내가 만든 일정은 언제든 수정·삭제할 수 있어요. 지난 날짜로는 일정을 만들 수 없어요.${REMOTE ? "" : " (이 브라우저에 저장돼요)"}</p>
     <div class="modal-actions"><button class="btn-sm" type="button" data-act="modal-close">취소</button><button class="btn-primary create-btn" type="submit">${s ? "저장" : "만들기"}</button></div></form></div></div>`;
+  paintSchedImg();
   const i = $("#modal input[name=title]"); if (i && !s) i.focus();
+}
+function paintSchedImg() {   // 일정 폼의 사진 미리보기
+  const box = $("#schedImgBox"); if (!box) return;
+  const cur = ui.schedImg !== undefined ? ui.schedImg : ui.schedImgCur;
+  box.innerHTML = cur ? `<img src="${cur}" alt="사진 미리보기">` : "＋ 사진";
+  $("#schedImgClear").hidden = !cur;
+  $("#schedImgNote").textContent = cur ? "이 사진이 일정 카드에 나와요" : "안 넣으면 고른 게임의 표지(게임도 안 골랐으면 기본 사진)가 나와요";
+}
+async function setSchedImg(blob) {
+  ui.schedImgBusy = true;
+  try {
+    let d = await processImage(blob, 640, 0.8);
+    if (d.length > 200000) d = await processImage(blob, 480, 0.7);
+    if (d.length > 200000) d = await processImage(blob, 360, 0.6);
+    if (d.length > 240000) { toast("사진이 너무 커요. 다른 사진을 골라 주세요"); return; }
+    ui.schedImg = d; paintSchedImg();
+  } catch (e) { toast("이미지를 읽을 수 없어요. 다른 사진을 골라 주세요"); }
+  finally { ui.schedImgBusy = false; const f = $("#schedImgPick"); if (f) f.value = ""; }
 }
 function openDelModal(s) {
   ui.modalOpen = true;
@@ -2074,15 +2157,15 @@ function deleteSession(id) {
   delete state.checkins[id]; delete state.chats[id]; state.plays = state.plays.filter(p => p.sessionId !== id);
   delete ui.openParts[id]; save(); closeModal(); toast("일정을 삭제했어요 · 캘린더에서도 지워졌어요"); render();
 }
-function processImage(blob) {
+function processImage(blob, max = 480, q = 0.8) {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(blob), im = new Image();
     im.onload = () => {
-      const s = Math.min(1, 480 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+      const s = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement("canvas");
       c.width = Math.max(1, Math.round(im.width * s)); c.height = Math.max(1, Math.round(im.height * s));
       const x = c.getContext("2d"); x.fillStyle = "#15181b"; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      let d = c.toDataURL("image/webp", 0.8); if (!d.startsWith("data:image/webp")) d = c.toDataURL("image/jpeg", 0.85);
+      let d = c.toDataURL("image/webp", q); if (!d.startsWith("data:image/webp")) d = c.toDataURL("image/jpeg", Math.min(0.85, q + 0.05));
       res(d);
     };
     im.onerror = () => { URL.revokeObjectURL(url); rej(new Error("bad image")); };
@@ -2105,6 +2188,7 @@ document.addEventListener("paste", e => {
 });
 document.addEventListener("change", e => {
   if (e.target.id === "filePick" && e.target.files[0]) setCover(e.target.files[0]);
+  if (e.target.id === "schedImgPick" && e.target.files[0]) setSchedImg(e.target.files[0]);
 });
 document.addEventListener("click", e => { if (e.target.id === "modalBg") closeModal(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && (ui.coverFor || ui.modalOpen)) closeModal(); });
