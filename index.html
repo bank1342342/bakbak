@@ -1399,14 +1399,14 @@ function partsHtml(s) {
   return `<div class="participant-pills">${peopleInfo(s).map(p => `<span class="participant-pill ${p.gm ? "is-gm" : ""} ${p.me ? "is-me" : ""}">${esc(p.name)}</span>`).join("")}</div>`;
 }
 /* ============ 카톡방 링크 ============ */
-// 일정을 만든 사람이 폼에 카톡방(오픈채팅 등) 링크를 적어 둔다. 링크는 만든 사람·관리자·참석 체크인한 사람에게만 보이고, 다른 사람에게는 "체크인하면 보여요" 안내만 나온다.
+// 일정을 만든 사람이 폼에 카톡방(오픈채팅 등) 링크를 적어 둔다. 링크는 로그인한 회원에게만 보이고, 로그인 전에는 "로그인하면 보여요" 안내만 나온다.
 const normChat = raw => { let u = (raw || "").trim(); if (u && !/^[a-z][a-z0-9+.-]*:/i.test(u) && /^[^\s\/]+\.[^\s\/]+/.test(u)) u = "https://" + u; return u; };
-const chatUrlOf = s => (REMOTE ? s.chatUrl : (isMine(s) || state.checkins[s.id]) ? s.chatUrl : "") || "";
+const chatUrlOf = s => (state.user ? s.chatUrl : "") || "";
 const hasChatOf = s => REMOTE ? !!(s.hasChat || s.chatUrl) : !!s.chatUrl;
 function chatHtml(s) {
   const url = chatUrlOf(s);
   if (url) return `<a class="chat-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${/kakao\.com/i.test(url) ? "카톡방 입장" : "채팅방 입장"} ↗</a>`;
-  if (hasChatOf(s)) return `<span class="chat-hint">${state.user ? "참석 체크인하면 카톡방 링크가 보여요" : "로그인하고 참석 체크인하면 카톡방 링크가 보여요"}</span>`;
+  if (hasChatOf(s)) return `<span class="chat-hint">${state.user ? "" : "로그인하면 카톡방 링크가 보여요"}</span>`;
   return "";
 }
 /* ============ 일정 사진 ============ */
@@ -1775,8 +1775,7 @@ const REMOTE_ACT = {   // 눌렀을 때 서버로 보내는 동작 (그 밖의 �
     const on = !!state.checkins[id];
     try { await api(on ? "api_leave" : "api_join", { p_token: token, p_id: id }); }
     catch (e) { await refreshAll("silent"); render(); throw e; }   // 정원이 찼으면 서버가 거절 → 최신 상태로 다시 그린다
-    if (on) { await after("체크인을 취소했어요"); return; }
-    await refreshAll("silent"); const s2 = findS(id); render(); toast(s2 && s2.chatUrl ? "체크인 완료! 카톡방 링크가 열렸어요" : "체크인 완료!");
+    await after(on ? "체크인을 취소했어요" : "체크인 완료!");
   }),
   "sched-del-yes": (el, id) => guard(async () => {
     await api("api_delete_meetup", { p_token: token, p_id: id }); delete ui.openParts[id]; ui.adm = null; closeModal();
@@ -1961,7 +1960,7 @@ document.addEventListener("click", e => {
         if (n >= capOf(s)) { toast("정원이 가득 찼어요. 선착순 마감이에요"); return; }
         state.checkins[id] = true; if (s.custom) (state.roster[id] = state.roster[id] || []).push({ id: myId(), name: myName(), school: mySchool() });
         if (s.game) state.plays.push({ id: "ci-" + id, sessionId: id, game: s.game, date: ymd(s.start), place: s.place, manual: false, role: "", result: "", memo: "", rating: null });
-        toast(s.chatUrl ? "체크인 완료! 카톡방 링크가 열렸어요" : "체크인 완료!");
+        toast("체크인 완료!");
       }
       save(); break;
     }
@@ -2099,7 +2098,7 @@ function openCoverModal(title) {
 function closeModal() {
   ui.coverFor = null; ui.modalOpen = false; ui.schedImg = undefined; ui.schedImgBusy = false; $("#modal").innerHTML = "";
 }
-const PLACES = ["서면 레드버튼", "내일도럭키"];   // 일정 만들기에서 고를 수 있는 장소 (마지막에 "직접 입력"이 따로 붙는다)
+const PLACES = ["서면 데블다이스 2호점", "내일도럭키"];   // 일정 만들기에서 고를 수 있는 장소 (마지막에 "직접 입력"이 따로 붙는다)
 function openSchedModal(dateStr, s) {   // s가 있으면 수정, 없으면 새 일정
   ui.modalOpen = true;
   const now = new Date(), def = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 14); if (now >= def) def.setDate(def.getDate() + 1);   // 새 일정 기본값: 오후 2시 (오늘 2시가 지났으면 내일)
@@ -2121,8 +2120,6 @@ function openSchedModal(dateStr, s) {   // s가 있으면 수정, 없으면 새 
       <div class="img-side"><div class="btn-row"><button type="button" class="btn-sm" data-act="sched-img-pick">사진 고르기</button><button type="button" class="btn-sm" id="schedImgClear" data-act="sched-img-clear">사진 지우기</button></div><p class="sec-hint" id="schedImgNote" style="margin:6px 0 0"></p></div></div>
       <input type="file" id="schedImgPick" accept="image/*" hidden></div>
     <label>카톡방 링크 (선택)<input name="chat" type="text" inputmode="url" autocomplete="off" maxlength="300" placeholder="예) https://open.kakao.com/o/abcd1234" value="${esc(v.chat)}"></label>
-    <p class="sec-hint" style="margin:-8px 0 0">링크는 나와 관리자, 참석 체크인한 사람에게만 보여요. 나중에 일정 수정에서 바꾸거나 지울 수 있어요.</p>
-    <p class="sec-hint" style="margin:0">날짜·시작 시간·장소만 있으면 만들 수 있어요. 나머지는 자유롭게 적거나 비워 둬도 돼요. 만든 일정은 캘린더에도 표시되고, 내가 만든 일정은 언제든 수정·삭제할 수 있어요. 지난 날짜로는 일정을 만들 수 없어요.${REMOTE ? "" : " (이 브라우저에 저장돼요)"}</p>
     <div class="modal-actions"><button class="btn-sm" type="button" data-act="modal-close">취소</button><button class="btn-primary create-btn" type="submit">${s ? "저장" : "만들기"}</button></div></form></div></div>`;
   paintSchedImg();
   const i = $("#modal input[name=title]"); if (i && !s) i.focus();
